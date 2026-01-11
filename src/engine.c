@@ -13,8 +13,7 @@ void engine_init(struct Engine *eng, const struct EngineConfig *cfg) {
   g_engine = eng;
   g_engine->config = *cfg;
 
-  SetConfigFlags(
-      FLAG_VSYNC_HINT); // must come BEFORE InitWindow if you use flags
+  SetConfigFlags(FLAG_VSYNC_HINT);
 
   InitWindow(cfg->window_width, cfg->window_height, "Blubber NGN");
 
@@ -28,7 +27,12 @@ void engine_init(struct Engine *eng, const struct EngineConfig *cfg) {
   memset(&eng->statics, 0, sizeof(eng->statics));
   memset(&eng->particles, 0, sizeof(eng->particles));
 
-  // future: init camera, ecs, pools, etc
+  eng->actors = malloc(sizeof(ActorComponents_t));
+  memset(eng->actors, 0, sizeof(ActorComponents_t));
+
+  eng->actors->componentStore =
+      calloc(MAX_COMPONENTS, sizeof(ComponentStorage_t));
+  eng->actors->componentCount = 0;
 }
 
 void engine_shutdown(void) {

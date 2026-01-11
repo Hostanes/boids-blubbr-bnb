@@ -1,16 +1,6 @@
-#ifndef SYSTEMS_H
-#define SYSTEMS_H
-
+#pragma once
 #include "../engine.h"
 #include "../game.h"
-#include "raylib.h"
-#include "raymath.h"
-#include "rlgl.h"
-#include <float.h>
-#include <math.h>
-#include <stdbool.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 
-#endif
+void SysBoidsUpdate(GameState_t *gs, Engine_t *eng, float dt);
+void SysBoidsDraw(GameState_t *gs, Engine_t *eng);

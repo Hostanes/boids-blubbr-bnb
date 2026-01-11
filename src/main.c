@@ -1,32 +1,23 @@
-// main.c
-// Entry point for the refactored Mech Arena demo.
-// Depends on: game.h, sound.h, systems.h, raylib, raymath
-
 #include "engine.h"
 #include "game.h"
 #include "raylib.h"
 #include "systems/systems.h"
-#include "time.h"
-#include <raymath.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/types.h>
+#include <time.h>
 
 int main(void) {
   printf("raylib version: %s\n", RAYLIB_VERSION);
 
   SetConfigFlags(FLAG_VSYNC_HINT);
 
-  // --------------------------------------------
-  // ENGINE CONFIG
-  // --------------------------------------------
   EngineConfig_t cfg = {
-      .window_width = 1280 * 1.2,
-      .window_height = 720 * 1.2,
+      .window_width = (int)(1280 * 1.2f),
+      .window_height = (int)(720 * 1.2f),
 
-      .fov_deg = 60.0f,
+      .fov_deg = 90.0f,
       .near_plane = 0.6f,
-      .far_plane = 50000.0f,
+      .far_plane = 5000.0f,
 
       .max_entities = 2048,
       .max_projectiles = 256,
@@ -35,33 +26,37 @@ int main(void) {
       .max_statics = 1024,
   };
 
-  srand(time(0));
+  srand((unsigned)time(0));
 
   Engine_t eng;
   engine_init(&eng, &cfg);
 
-  EnableCursor();
   SetTargetFPS(60);
 
-  SetExitKey(KEY_NULL);
+  // ----- Init boids "game"
+  GameInitBoids(&eng);
 
-  // --------------------------------------------
-  // CAMERA SETUP (still here for now)
-  // --------------------------------------------
-  Camera3D camera = {0};
-  camera.position = (Vector3){0, 0, 0};
-  camera.target = (Vector3){0, 0, 0};
-  camera.up = (Vector3){0, 1, 0};
-  camera.fovy = cfg.fov_deg;
-  camera.projection = CAMERA_PERSPECTIVE;
-
-  SetMasterVolume(0.1f);
+  // Free camera mode uses mouse look; lock cursor by default
+  DisableCursor();
 
   while (!WindowShouldClose()) {
     float dt = GetFrameTime();
+
+    // Toggle cursor lock/capture (Right Mouse)
+    if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
+      if (IsCursorHidden())
+        EnableCursor();
+      else
+        DisableCursor();
+    }
+
+    // Update simulation
+    GameUpdate(&eng, dt);
+
+    GameDraw(&eng);
   }
 
-  CloseAudioDevice();
+  GameShutdown(&eng);
   engine_shutdown();
 
   return 0;
