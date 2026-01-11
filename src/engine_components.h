@@ -57,7 +57,7 @@ typedef uint32_t ComponentID;
 typedef struct {
   ComponentID id;
   size_t elementSize;
-  void **ptrs; // contiguous array: element_size * max_entities
+  void *data; // contiguous array: element_size * max_entities
   int count;
   bool *occupied; // per entity
 } ComponentStorage_t;

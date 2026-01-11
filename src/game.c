@@ -54,7 +54,6 @@ void GameInitBoids(Engine_t *eng) {
   memset(&g_gs, 0, sizeof(g_gs));
 
   // ---- Register components (contiguous arrays)
-  // NOTE: assumes eng->actors->componentStore was allocated in engine_init
   g_gs.reg.cid_Boid = registerComponent(eng->actors, sizeof(Boid_t));
 
   // ---- Simulation params
@@ -86,22 +85,16 @@ void GameInitBoids(Engine_t *eng) {
   UpdateCamera(&g_gs.cam, CAMERA_FREE);
   DisableCursor(); // lock mouse for fly cam by default
 
-  // spawn entities + add Boid component
-  eng->em.count = 0;
   for (int i = 0; i < g_gs.boidCount; i++) {
     int idx = eng->em.count++;
     entity_t e = MakeEntityID(ET_ACTOR, idx);
-    g_gs.boids[i] = e;
 
     eng->em.alive[idx] = 1;
     eng->em.masks[idx] = 0;
 
-    Vector3 p = rand_in_box(g_gs.boundsMin, g_gs.boundsMax);
-    Vector3 v = rand_vel(5.0f);
-
-    Boid_t b = {0};
-    b.pos = alloc_vec3(p);
-    b.vel = alloc_vec3(v);
+    Boid_t b;
+    b.pos = rand_in_box(g_gs.boundsMin, g_gs.boundsMax);
+    b.vel = rand_vel(5.0f);
 
     addComponentToElement(&eng->em, eng->actors, e, g_gs.reg.cid_Boid, &b);
   }

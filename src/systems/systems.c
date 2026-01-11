@@ -56,7 +56,6 @@ static inline int cellIndex(int cx, int cy, int cz, int dimX, int dimY) {
 
 void SysBoidsUpdate(GameState_t *gs, Engine_t *eng, float dt) {
   ActorComponents_t *ac = eng->actors;
-
   ComponentStorage_t *boidS = &ac->componentStore[gs->reg.cid_Boid];
 
   // -----------------------------
@@ -113,10 +112,10 @@ void SysBoidsUpdate(GameState_t *gs, Engine_t *eng, float dt) {
 
     entity_t ei = MakeEntityID(ET_ACTOR, i);
     Boid_t *b = (Boid_t *)getComponent(ac, ei, gs->reg.cid_Boid);
-    if (!b || !b->pos || !b->vel)
+    if (!b)
       continue;
 
-    Vector3 p = *b->pos;
+    Vector3 p = b->pos;
 
     int cx = cellCoord(p.x, bmin.x, invCell, dimX);
     int cy = cellCoord(p.y, bmin.y, invCell, dimY);
@@ -128,7 +127,7 @@ void SysBoidsUpdate(GameState_t *gs, Engine_t *eng, float dt) {
     nextIdx[i] = head[ci];
     head[ci] = i;
 
-    nextVel[i] = *b->vel;
+    nextVel[i] = b->vel;
   }
 
   const float neighborR2 = gs->neighborRadius * gs->neighborRadius;
@@ -148,11 +147,11 @@ void SysBoidsUpdate(GameState_t *gs, Engine_t *eng, float dt) {
 
     entity_t ei = MakeEntityID(ET_ACTOR, i);
     Boid_t *bi = (Boid_t *)getComponent(ac, ei, gs->reg.cid_Boid);
-    if (!bi || !bi->pos || !bi->vel)
+    if (!bi)
       continue;
 
-    Vector3 p = *bi->pos;
-    Vector3 v = *bi->vel;
+    Vector3 p = bi->pos;
+    Vector3 v = bi->vel;
 
     int cx = cellCoord(p.x, bmin.x, invCell, dimX);
     int cy = cellCoord(p.y, bmin.y, invCell, dimY);
@@ -187,17 +186,17 @@ void SysBoidsUpdate(GameState_t *gs, Engine_t *eng, float dt) {
 
             entity_t ej = MakeEntityID(ET_ACTOR, j);
             Boid_t *bj = (Boid_t *)getComponent(ac, ej, gs->reg.cid_Boid);
-            if (!bj || !bj->pos || !bj->vel)
+            if (!bj)
               continue;
 
-            Vector3 d = vsub(*bj->pos, p);
+            Vector3 d = vsub(bj->pos, p);
             float dist2 = d.x * d.x + d.y * d.y + d.z * d.z;
             if (dist2 <= 0.0000001f)
               continue;
 
             if (dist2 < neighborR2) {
-              sumVel = vadd(sumVel, *bj->vel);
-              sumPos = vadd(sumPos, *bj->pos);
+              sumVel = vadd(sumVel, bj->vel);
+              sumPos = vadd(sumPos, bj->pos);
               neighborCount++;
             }
 
@@ -275,27 +274,27 @@ void SysBoidsUpdate(GameState_t *gs, Engine_t *eng, float dt) {
 
     entity_t ei = MakeEntityID(ET_ACTOR, i);
     Boid_t *b = (Boid_t *)getComponent(ac, ei, gs->reg.cid_Boid);
-    if (!b || !b->pos || !b->vel)
+    if (!b)
       continue;
 
-    *b->vel = nextVel[i];
-    *b->pos = vadd(*b->pos, vscale(*b->vel, dt));
+    b->vel = nextVel[i];
+    b->pos = vadd(b->pos, vscale(b->vel, dt));
 
     // wrap
-    if (b->pos->x < bmin.x)
-      b->pos->x = bmax.x;
-    if (b->pos->x > bmax.x)
-      b->pos->x = bmin.x;
+    if (b->pos.x < bmin.x)
+      b->pos.x = bmax.x;
+    if (b->pos.x > bmax.x)
+      b->pos.x = bmin.x;
 
-    if (b->pos->y < bmin.y)
-      b->pos->y = bmax.y;
-    if (b->pos->y > bmax.y)
-      b->pos->y = bmin.y;
+    if (b->pos.y < bmin.y)
+      b->pos.y = bmax.y;
+    if (b->pos.y > bmax.y)
+      b->pos.y = bmin.y;
 
-    if (b->pos->z < bmin.z)
-      b->pos->z = bmax.z;
-    if (b->pos->z > bmax.z)
-      b->pos->z = bmin.z;
+    if (b->pos.z < bmin.z)
+      b->pos.z = bmax.z;
+    if (b->pos.z > bmax.z)
+      b->pos.z = bmin.z;
   }
 }
 
@@ -312,11 +311,11 @@ void SysBoidsDraw(GameState_t *gs, Engine_t *eng) {
 
     entity_t ei = MakeEntityID(ET_ACTOR, i);
     Boid_t *b = (Boid_t *)getComponent(ac, ei, gs->reg.cid_Boid);
-    if (!b || !b->pos || !b->vel)
+    if (!b)
       continue;
 
-    Vector3 p = *b->pos;
-    Vector3 v = *b->vel;
+    Vector3 p = b->pos;
+    Vector3 v = b->vel;
 
     float sp2 = v.x * v.x + v.y * v.y + v.z * v.z;
     if (sp2 < 0.000001f)
