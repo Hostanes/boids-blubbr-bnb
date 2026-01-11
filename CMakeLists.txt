@@ -26,6 +26,11 @@ target_include_directories(MechArenaDemo PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
+find_package(OpenMP)
+if(OpenMP_C_FOUND)
+  target_link_libraries(MechArenaDemo PRIVATE OpenMP::OpenMP_C)
+endif()
+
 # ------------------- Raylib -------------------
 # First try a system-installed raylib package
 find_package(raylib 4.0 QUIET)

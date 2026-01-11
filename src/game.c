@@ -53,20 +53,20 @@ void GameInitBoids(Engine_t *eng) {
   g_gs.reg.cid_vel = registerComponent(eng->actors, sizeof(Vector3));
 
   // ---- Simulation params
-  g_gs.boidCount = 300;
+  g_gs.boidCount = 1024*2;
   if (g_gs.boidCount > MAX_ENTITIES)
     g_gs.boidCount = MAX_ENTITIES;
 
-  g_gs.neighborRadius = 15.0f;
-  g_gs.separationRadius = 6.0f;
+  g_gs.neighborRadius = 12.0f;
+  g_gs.separationRadius = 4.0f;
 
-  g_gs.alignWeight = 1.0f;
-  g_gs.cohesionWeight = 0.8f;
+  g_gs.alignWeight = .5f;
+  g_gs.cohesionWeight = 0.2f;
   g_gs.separationWeight = 1.4f;
 
-  g_gs.maxSpeed = 20.0f;
-  g_gs.minSpeed = 2.0f;
-  g_gs.maxForce = 12.0f;
+  g_gs.maxSpeed = 15.0f;
+  g_gs.minSpeed = 5.0f;
+  g_gs.maxForce = 6.0f;
 
   g_gs.boundsMin = (Vector3){-50, -50, -50};
   g_gs.boundsMax = (Vector3){50, 50, 50};
