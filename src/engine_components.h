@@ -18,7 +18,7 @@
 #define ENTITY_TYPE_SHIFT 30
 #define ENTITY_INDEX_MASK 0x3FFFFFFF
 
-#define MAX_ENTITIES 2048
+#define MAX_ENTITIES 4096
 
 typedef enum {
   ET_ACTOR = 0,

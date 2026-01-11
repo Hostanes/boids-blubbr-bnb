@@ -53,7 +53,7 @@ void GameInitBoids(Engine_t *eng) {
   g_gs.reg.cid_vel = registerComponent(eng->actors, sizeof(Vector3));
 
   // ---- Simulation params
-  g_gs.boidCount = 1024*2;
+  g_gs.boidCount = 4096;
   if (g_gs.boidCount > MAX_ENTITIES)
     g_gs.boidCount = MAX_ENTITIES;
 
