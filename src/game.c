@@ -61,11 +61,11 @@ void GameInitBoids(Engine_t *eng) {
   if (g_gs.boidCount > MAX_ENTITIES)
     g_gs.boidCount = MAX_ENTITIES;
 
-  g_gs.neighborRadius = 12.0f;
-  g_gs.separationRadius = 4.0f;
+  g_gs.neighborRadius = 8.0f;
+  g_gs.separationRadius = 3.0f;
 
-  g_gs.alignWeight = .5f;
-  g_gs.cohesionWeight = 0.2f;
+  g_gs.alignWeight = 1.0f;
+  g_gs.cohesionWeight = 0.8f;
   g_gs.separationWeight = 1.4f;
 
   g_gs.maxSpeed = 15.0f;
