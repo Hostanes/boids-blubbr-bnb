@@ -57,7 +57,7 @@ void GameInitBoids(Engine_t *eng) {
   g_gs.reg.cid_Boid = registerComponent(eng->actors, sizeof(Boid_t));
 
   // ---- Simulation params
-  g_gs.boidCount = 10000;
+  g_gs.boidCount = 5000;
   if (g_gs.boidCount > MAX_ENTITIES)
     g_gs.boidCount = MAX_ENTITIES;
 
