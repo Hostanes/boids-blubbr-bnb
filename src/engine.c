@@ -14,7 +14,6 @@ void engine_init(struct Engine *eng, const struct EngineConfig *cfg) {
   g_engine->config = *cfg;
 
   SetConfigFlags(FLAG_VSYNC_HINT);
-
   InitWindow(cfg->window_width, cfg->window_height, "Blubber NGN");
 
   eng->em.count = 0;
@@ -23,12 +22,10 @@ void engine_init(struct Engine *eng, const struct EngineConfig *cfg) {
 
   eng->actors = malloc(sizeof(ActorComponents_t));
   memset(eng->actors, 0, sizeof(ActorComponents_t));
+
   memset(&eng->projectiles, 0, sizeof(eng->projectiles));
   memset(&eng->statics, 0, sizeof(eng->statics));
   memset(&eng->particles, 0, sizeof(eng->particles));
-
-  eng->actors = malloc(sizeof(ActorComponents_t));
-  memset(eng->actors, 0, sizeof(ActorComponents_t));
 
   eng->actors->componentStore =
       calloc(MAX_COMPONENTS, sizeof(ComponentStorage_t));
@@ -36,6 +33,24 @@ void engine_init(struct Engine *eng, const struct EngineConfig *cfg) {
 }
 
 void engine_shutdown(void) {
+  if (g_engine && g_engine->actors && g_engine->actors->componentStore) {
+    for (int c = 0; c < g_engine->actors->componentCount; c++) {
+      ComponentStorage_t *cs = &g_engine->actors->componentStore[c];
+      if (cs->ptrs) {
+        for (int i = 0; i < MAX_ENTITIES; i++) {
+          free(cs->ptrs[i]);
+        }
+        free(cs->ptrs);
+      }
+      free(cs->occupied);
+      cs->ptrs = NULL;
+      cs->occupied = NULL;
+    }
+    free(g_engine->actors->componentStore);
+    free(g_engine->actors);
+    g_engine->actors = NULL;
+  }
+
   CloseWindow();
   g_engine = NULL;
 }

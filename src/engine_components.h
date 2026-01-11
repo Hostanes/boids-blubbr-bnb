@@ -57,16 +57,14 @@ typedef uint32_t ComponentID;
 typedef struct {
   ComponentID id;
   size_t elementSize;
-  void *data; // contiguous array: element_size * max_entities
+  void **ptrs; // contiguous array: element_size * max_entities
   int count;
   bool *occupied; // per entity
 } ComponentStorage_t;
 
 typedef struct {
-
   ComponentStorage_t *componentStore; //  TODO define max comps
   int componentCount;
-
 } ActorComponents_t;
 
 typedef struct {

@@ -9,11 +9,13 @@ int registerComponent(ActorComponents_t *actors, size_t elementSize) {
     return -1;
 
   int componentId = actors->componentCount;
-
   ComponentStorage_t *cs = &actors->componentStore[componentId];
+
   cs->id = componentId;
   cs->elementSize = elementSize;
-  cs->data = calloc(MAX_ENTITIES, elementSize);
+
+  // Pointer-per-entity storage
+  cs->ptrs = calloc(MAX_ENTITIES, sizeof(void *));
   cs->occupied = calloc(MAX_ENTITIES, sizeof(bool));
   cs->count = 0;
 
@@ -27,8 +29,15 @@ void addComponentToElement(EntityManager_t *em, ActorComponents_t *actors,
   int idx = GetEntityIndex(entity);
   ComponentStorage_t *cs = &actors->componentStore[componentId];
 
-  uint8_t *addr = (uint8_t *)cs->data + (idx * cs->elementSize);
-  memcpy(addr, elementValue, cs->elementSize);
+  if (idx < 0 || idx >= MAX_ENTITIES)
+    return;
+
+  // Allocate per-entity component storage on first add
+  if (cs->ptrs[idx] == NULL) {
+    cs->ptrs[idx] = calloc(1, cs->elementSize);
+  }
+
+  memcpy(cs->ptrs[idx], elementValue, cs->elementSize);
 
   if (!cs->occupied[idx])
     cs->count++;
@@ -41,9 +50,13 @@ void *getComponent(ActorComponents_t *actors, entity_t entity,
                    int componentId) {
   int idx = GetEntityIndex(entity);
   ComponentStorage_t *cs = &actors->componentStore[componentId];
+
+  if (idx < 0 || idx >= MAX_ENTITIES)
+    return NULL;
   if (!cs->occupied[idx])
     return NULL;
-  return (uint8_t *)cs->data + (idx * cs->elementSize);
+
+  return cs->ptrs[idx];
 }
 
 void removeComponentFromEntity(EntityManager_t *em, ActorComponents_t *actors,
@@ -51,16 +64,19 @@ void removeComponentFromEntity(EntityManager_t *em, ActorComponents_t *actors,
   int idx = GetEntityIndex(entity);
   ComponentStorage_t *cs = &actors->componentStore[id];
 
+  if (idx < 0 || idx >= MAX_ENTITIES)
+    return;
+
   if (cs->occupied[idx]) {
     cs->occupied[idx] = false;
     cs->count--;
   }
 
-  memset((uint8_t *)cs->data + idx * cs->elementSize, 0, cs->elementSize);
+  if (cs->ptrs[idx]) {
+    free(cs->ptrs[idx]);
+    cs->ptrs[idx] = NULL;
+  }
+
   em->masks[idx] &= ~(1u << id);
 }
 
-// return an entire array of a component
-void *GetComponentArray(ActorComponents_t *actors, ComponentID cid) {
-  return actors->componentStore[cid].data;
-}

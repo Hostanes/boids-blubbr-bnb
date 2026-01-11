@@ -41,6 +41,12 @@ static Vector3 rand_vel(float scale) {
   };
 }
 
+static Vector3 *alloc_vec3(Vector3 v) {
+  Vector3 *p = (Vector3 *)malloc(sizeof(Vector3));
+  *p = v;
+  return p;
+}
+
 // ------------------------------------------------------------
 // One-time init
 // ------------------------------------------------------------
@@ -49,8 +55,7 @@ void GameInitBoids(Engine_t *eng) {
 
   // ---- Register components (contiguous arrays)
   // NOTE: assumes eng->actors->componentStore was allocated in engine_init
-  g_gs.reg.cid_pos = registerComponent(eng->actors, sizeof(Vector3));
-  g_gs.reg.cid_vel = registerComponent(eng->actors, sizeof(Vector3));
+  g_gs.reg.cid_Boid = registerComponent(eng->actors, sizeof(Boid_t));
 
   // ---- Simulation params
   g_gs.boidCount = 4096;
@@ -81,15 +86,9 @@ void GameInitBoids(Engine_t *eng) {
   UpdateCamera(&g_gs.cam, CAMERA_FREE);
   DisableCursor(); // lock mouse for fly cam by default
 
-  // ---- Spawn boids
-  // IMPORTANT: your ECS must index arrays by entity INDEX (0..MAX_ENTITIES-1),
-  // not the full entity id with category bits.
-  // This spawn assumes engine_components uses GetEntityIndex(entity)
-  // internally.
+  // spawn entities + add Boid component
+  eng->em.count = 0;
   for (int i = 0; i < g_gs.boidCount; i++) {
-    if (eng->em.count >= MAX_ENTITIES)
-      break;
-
     int idx = eng->em.count++;
     entity_t e = MakeEntityID(ET_ACTOR, idx);
     g_gs.boids[i] = e;
@@ -100,8 +99,11 @@ void GameInitBoids(Engine_t *eng) {
     Vector3 p = rand_in_box(g_gs.boundsMin, g_gs.boundsMax);
     Vector3 v = rand_vel(5.0f);
 
-    addComponentToElement(&eng->em, eng->actors, e, g_gs.reg.cid_pos, &p);
-    addComponentToElement(&eng->em, eng->actors, e, g_gs.reg.cid_vel, &v);
+    Boid_t b = {0};
+    b.pos = alloc_vec3(p);
+    b.vel = alloc_vec3(v);
+
+    addComponentToElement(&eng->em, eng->actors, e, g_gs.reg.cid_Boid, &b);
   }
 
   g_inited = true;

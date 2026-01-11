@@ -55,16 +55,13 @@ static inline int cellIndex(int cx, int cy, int cz, int dimX, int dimY) {
 }
 
 void SysBoidsUpdate(GameState_t *gs, Engine_t *eng, float dt) {
-  Vector3 *pos = (Vector3 *)GetComponentArray(eng->actors, gs->reg.cid_pos);
-  Vector3 *vel = (Vector3 *)GetComponentArray(eng->actors, gs->reg.cid_vel);
+  ActorComponents_t *ac = eng->actors;
 
-  ComponentStorage_t *posS = &eng->actors->componentStore[gs->reg.cid_pos];
-  ComponentStorage_t *velS = &eng->actors->componentStore[gs->reg.cid_vel];
+  ComponentStorage_t *boidS = &ac->componentStore[gs->reg.cid_Boid];
 
   // -----------------------------
-  // Grid setup
+  // Grid setup (linked-list buckets)
   // -----------------------------
-  // Choose cell size ~ neighbor radius (typical choice)
   const float cellSize =
       (gs->neighborRadius > 0.001f) ? gs->neighborRadius : 1.0f;
 
@@ -79,8 +76,6 @@ void SysBoidsUpdate(GameState_t *gs, Engine_t *eng, float dt) {
   int dimY = (int)ceilf(sy / cellSize);
   int dimZ = (int)ceilf(sz / cellSize);
 
-  // Safety clamp (avoid insane dims if someone sets tiny radii)
-  // With MAX_ENTITIES=512 you don't want gigantic grids.
   if (dimX < 1)
     dimX = 1;
   if (dimX > 64)
@@ -96,61 +91,68 @@ void SysBoidsUpdate(GameState_t *gs, Engine_t *eng, float dt) {
 
   const int cellCount = dimX * dimY * dimZ;
 
-  // Linked-list buckets: head[cell] -> entity index -> next[index]
-  // NOTE: cellCount varies with parameters; allocate with a conservative max.
-  // 64^3 = 262144 ints (fine).
   static int head[64 * 64 * 64];
   static int nextIdx[MAX_ENTITIES];
+  static int boidCell[MAX_ENTITIES];
+  static Vector3 nextVel[MAX_ENTITIES];
 
-  // Init heads
   for (int c = 0; c < cellCount; c++)
     head[c] = -1;
 
   const float invCell = 1.0f / cellSize;
 
-  // Build grid: insert each alive+occupied boid into its cell
+  // Build grid + seed nextVel (single-threaded)
   for (int i = 0; i < MAX_ENTITIES; i++) {
     nextIdx[i] = -1;
+    boidCell[i] = -1;
+
     if (!eng->em.alive[i])
       continue;
-    if (!posS->occupied[i] || !velS->occupied[i])
+    if (!boidS->occupied[i])
       continue;
 
-    Vector3 p = pos[i];
+    entity_t ei = MakeEntityID(ET_ACTOR, i);
+    Boid_t *b = (Boid_t *)getComponent(ac, ei, gs->reg.cid_Boid);
+    if (!b || !b->pos || !b->vel)
+      continue;
+
+    Vector3 p = *b->pos;
+
     int cx = cellCoord(p.x, bmin.x, invCell, dimX);
     int cy = cellCoord(p.y, bmin.y, invCell, dimY);
     int cz = cellCoord(p.z, bmin.z, invCell, dimZ);
 
     int ci = cellIndex(cx, cy, cz, dimX, dimY);
+    boidCell[i] = ci;
+
     nextIdx[i] = head[ci];
     head[ci] = i;
+
+    nextVel[i] = *b->vel;
   }
 
+  const float neighborR2 = gs->neighborRadius * gs->neighborRadius;
+  const float sepR2 = gs->separationRadius * gs->separationRadius;
+
   // -----------------------------
-  // Boids update
+  // Compute nextVel (parallel safe)
   // -----------------------------
-  static Vector3 nextVel[MAX_ENTITIES];
-
-  for (int i = 0; i < MAX_ENTITIES; i++)
-    nextVel[i] = vel[i];
-
-  const float neighborR = gs->neighborRadius;
-  const float sepR = gs->separationRadius;
-
-  const float neighborR2 = neighborR * neighborR;
-  const float sepR2 = sepR * sepR;
-
 #ifdef _OPENMP
 #pragma omp parallel for schedule(static)
 #endif
   for (int i = 0; i < MAX_ENTITIES; i++) {
     if (!eng->em.alive[i])
       continue;
-    if (!posS->occupied[i] || !velS->occupied[i])
+    if (!boidS->occupied[i])
       continue;
 
-    Vector3 p = pos[i];
-    Vector3 v = vel[i];
+    entity_t ei = MakeEntityID(ET_ACTOR, i);
+    Boid_t *bi = (Boid_t *)getComponent(ac, ei, gs->reg.cid_Boid);
+    if (!bi || !bi->pos || !bi->vel)
+      continue;
+
+    Vector3 p = *bi->pos;
+    Vector3 v = *bi->vel;
 
     int cx = cellCoord(p.x, bmin.x, invCell, dimX);
     int cy = cellCoord(p.y, bmin.y, invCell, dimY);
@@ -183,14 +185,19 @@ void SysBoidsUpdate(GameState_t *gs, Engine_t *eng, float dt) {
             if (j == i)
               continue;
 
-            Vector3 d = vsub(pos[j], p);
+            entity_t ej = MakeEntityID(ET_ACTOR, j);
+            Boid_t *bj = (Boid_t *)getComponent(ac, ej, gs->reg.cid_Boid);
+            if (!bj || !bj->pos || !bj->vel)
+              continue;
+
+            Vector3 d = vsub(*bj->pos, p);
             float dist2 = d.x * d.x + d.y * d.y + d.z * d.z;
             if (dist2 <= 0.0000001f)
               continue;
 
             if (dist2 < neighborR2) {
-              sumVel = vadd(sumVel, vel[j]);
-              sumPos = vadd(sumPos, pos[j]);
+              sumVel = vadd(sumVel, *bj->vel);
+              sumPos = vadd(sumPos, *bj->pos);
               neighborCount++;
             }
 
@@ -209,6 +216,7 @@ void SysBoidsUpdate(GameState_t *gs, Engine_t *eng, float dt) {
     if (neighborCount > 0) {
       float invN = 1.0f / (float)neighborCount;
 
+      // Alignment
       Vector3 avgVel = vscale(sumVel, invN);
       Vector3 desiredA = (Vector3){0};
       float avm = vlen(avgVel);
@@ -217,6 +225,7 @@ void SysBoidsUpdate(GameState_t *gs, Engine_t *eng, float dt) {
       Vector3 steerA = vsub(desiredA, v);
       steerA = vclamp_mag(steerA, gs->maxForce);
 
+      // Cohesion
       Vector3 center = vscale(sumPos, invN);
       Vector3 toCenter = vsub(center, p);
       Vector3 desiredC = (Vector3){0};
@@ -226,6 +235,7 @@ void SysBoidsUpdate(GameState_t *gs, Engine_t *eng, float dt) {
       Vector3 steerC = vsub(desiredC, v);
       steerC = vclamp_mag(steerC, gs->maxForce);
 
+      // Separation
       if (sepCount > 0)
         sumSep = vscale(sumSep, 1.0f / (float)sepCount);
       Vector3 desiredS = (Vector3){0};
@@ -248,81 +258,65 @@ void SysBoidsUpdate(GameState_t *gs, Engine_t *eng, float dt) {
       v = vscale(v, gs->minSpeed / sp);
     }
 
-    nextVel[i] = v; // each thread writes a unique i -> safe
+    nextVel[i] = v;
   }
 
+  // -----------------------------
+  // Commit + integrate positions (parallel safe)
+  // -----------------------------
 #ifdef _OPENMP
 #pragma omp parallel for schedule(static)
 #endif
   for (int i = 0; i < MAX_ENTITIES; i++) {
     if (!eng->em.alive[i])
       continue;
-    if (!posS->occupied[i] || !velS->occupied[i])
+    if (!boidS->occupied[i])
       continue;
 
-    vel[i] = nextVel[i];
-    pos[i] = vadd(pos[i], vscale(vel[i], dt));
+    entity_t ei = MakeEntityID(ET_ACTOR, i);
+    Boid_t *b = (Boid_t *)getComponent(ac, ei, gs->reg.cid_Boid);
+    if (!b || !b->pos || !b->vel)
+      continue;
 
-    if (pos[i].x < bmin.x)
-      pos[i].x = bmax.x;
-    if (pos[i].x > bmax.x)
-      pos[i].x = bmin.x;
-    if (pos[i].y < bmin.y)
-      pos[i].y = bmax.y;
-    if (pos[i].y > bmax.y)
-      pos[i].y = bmin.y;
-    if (pos[i].z < bmin.z)
-      pos[i].z = bmax.z;
-    if (pos[i].z > bmax.z)
-      pos[i].z = bmin.z;
+    *b->vel = nextVel[i];
+    *b->pos = vadd(*b->pos, vscale(*b->vel, dt));
+
+    // wrap
+    if (b->pos->x < bmin.x)
+      b->pos->x = bmax.x;
+    if (b->pos->x > bmax.x)
+      b->pos->x = bmin.x;
+
+    if (b->pos->y < bmin.y)
+      b->pos->y = bmax.y;
+    if (b->pos->y > bmax.y)
+      b->pos->y = bmin.y;
+
+    if (b->pos->z < bmin.z)
+      b->pos->z = bmax.z;
+    if (b->pos->z > bmax.z)
+      b->pos->z = bmin.z;
   }
 }
 
 void SysBoidsDraw(GameState_t *gs, Engine_t *eng) {
   ActorComponents_t *ac = eng->actors;
+  ComponentStorage_t *boidS = &ac->componentStore[gs->reg.cid_Boid];
 
-  // // Draw cubes (still 512 calls)
-  // for (int i = 0; i < MAX_ENTITIES; i++) {
-  //   if (!eng->em.alive[i])
-  //     continue;
-
-  //   entity_t ei = MakeEntityID(ET_ACTOR, i);
-  //   Vector3 *pPtr = (Vector3 *)getComponent(ac, ei, gs->reg.cid_pos);
-  //   Vector3 *vPtr = (Vector3 *)getComponent(ac, ei, gs->reg.cid_vel);
-  //   if (!pPtr || !vPtr)
-  //     continue;
-
-  //   Vector3 p = *pPtr;
-  //   Vector3 v = *vPtr;
-
-  //   float sp2 = v.x * v.x + v.y * v.y + v.z * v.z;
-  //   if (sp2 < 0.000001f)
-  //     continue;
-  //   float invSp = 1.0f / sqrtf(sp2);
-
-  //   Vector3 dir = (Vector3){v.x * invSp, v.y * invSp, v.z * invSp};
-
-  //   float hue = (dir.x * 0.5f + 0.5f) * 360.0f;
-  //   float sat = 0.15f + (dir.y * 0.5f + 0.5f) * 0.85f;
-  //   Color c = ColorFromHSV(hue, sat, 0.95f);
-
-  //   DrawCubeV(p, (Vector3){0.35f, 0.35f, 0.35f}, c);
-  // }
-
-  // Batched direction lines (1 draw call-ish in rlgl batching terms)
   rlBegin(RL_LINES);
   for (int i = 0; i < MAX_ENTITIES; i++) {
     if (!eng->em.alive[i])
       continue;
-
-    entity_t ei = MakeEntityID(ET_ACTOR, i);
-    Vector3 *pPtr = (Vector3 *)getComponent(ac, ei, gs->reg.cid_pos);
-    Vector3 *vPtr = (Vector3 *)getComponent(ac, ei, gs->reg.cid_vel);
-    if (!pPtr || !vPtr)
+    if (!boidS->occupied[i])
       continue;
 
-    Vector3 p = *pPtr;
-    Vector3 v = *vPtr;
+    entity_t ei = MakeEntityID(ET_ACTOR, i);
+    Boid_t *b = (Boid_t *)getComponent(ac, ei, gs->reg.cid_Boid);
+    if (!b || !b->pos || !b->vel)
+      continue;
+
+    Vector3 p = *b->pos;
+    Vector3 v = *b->vel;
 
     float sp2 = v.x * v.x + v.y * v.y + v.z * v.z;
     if (sp2 < 0.000001f)

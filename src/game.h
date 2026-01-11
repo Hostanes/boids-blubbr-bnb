@@ -4,11 +4,13 @@
 #include <stdint.h>
 
 typedef struct {
-  int cid_pos;
-  int cid_vel;
-  int cid_acc;
-  int cid_params;
+  int cid_Boid;
 } BoidComponentRegistry_t;
+
+typedef struct Boid {
+  Vector3 *pos;
+  Vector3 *vel;
+} Boid_t;
 
 typedef struct {
   BoidComponentRegistry_t reg;
