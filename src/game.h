@@ -8,8 +8,8 @@ typedef struct {
 } BoidComponentRegistry_t;
 
 typedef struct Boid {
-  Vector3 *pos;
-  Vector3 *vel;
+  Vector3 pos;
+  Vector3 vel;
 } Boid_t;
 
 typedef struct {
