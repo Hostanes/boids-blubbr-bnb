@@ -32,31 +32,44 @@ static inline Vector3 vscale(Vector3 a, float s) {
 }
 
 void SysBoidsUpdate(GameState_t *gs, Engine_t *eng, float dt) {
-  Vector3 *pos = (Vector3 *)GetComponentArray(eng->actors, gs->reg.cid_pos);
-  Vector3 *vel = (Vector3 *)GetComponentArray(eng->actors, gs->reg.cid_vel);
-
-  ComponentStorage_t *posS = &eng->actors->componentStore[gs->reg.cid_pos];
-  ComponentStorage_t *velS = &eng->actors->componentStore[gs->reg.cid_vel];
+  ActorComponents_t *ac = eng->actors;
 
   // temp arrays so updates are “simultaneous”
   static Vector3 nextVel[MAX_ENTITIES];
 
-  // Copy current velocities
+  // Initialize nextVel from current velocity (via getComponent)
   for (int i = 0; i < MAX_ENTITIES; i++) {
-    nextVel[i] = vel[i];
+    if (!eng->em.alive[i]) {
+      nextVel[i] = (Vector3){0};
+      continue;
+    }
+
+    entity_t ei = MakeEntityID(ET_ACTOR, i);
+    Vector3 *vi = (Vector3 *)getComponent(ac, ei, gs->reg.cid_vel);
+    if (!vi) {
+      nextVel[i] = (Vector3){0};
+      continue;
+    }
+
+    nextVel[i] = *vi;
   }
 
   const float neighborR = gs->neighborRadius;
   const float sepR = gs->separationRadius;
 
   for (int i = 0; i < MAX_ENTITIES; i++) {
-    if (!posS->occupied[i] || !velS->occupied[i])
-      continue;
     if (!eng->em.alive[i])
       continue;
 
-    Vector3 p = pos[i];
-    Vector3 v = vel[i];
+    entity_t ei = MakeEntityID(ET_ACTOR, i);
+
+    Vector3 *piPtr = (Vector3 *)getComponent(ac, ei, gs->reg.cid_pos);
+    Vector3 *viPtr = (Vector3 *)getComponent(ac, ei, gs->reg.cid_vel);
+    if (!piPtr || !viPtr)
+      continue;
+
+    Vector3 p = *piPtr;
+    Vector3 v = *viPtr;
 
     Vector3 sumVel = (Vector3){0};
     Vector3 sumPos = (Vector3){0};
@@ -69,25 +82,28 @@ void SysBoidsUpdate(GameState_t *gs, Engine_t *eng, float dt) {
     for (int j = 0; j < MAX_ENTITIES; j++) {
       if (j == i)
         continue;
-      if (!posS->occupied[j] || !velS->occupied[j])
-        continue;
       if (!eng->em.alive[j])
         continue;
 
-      Vector3 d = vsub(pos[j], p);
+      entity_t ej = MakeEntityID(ET_ACTOR, j);
+
+      Vector3 *pjPtr = (Vector3 *)getComponent(ac, ej, gs->reg.cid_pos);
+      Vector3 *vjPtr = (Vector3 *)getComponent(ac, ej, gs->reg.cid_vel);
+      if (!pjPtr || !vjPtr)
+        continue;
+
+      Vector3 d = vsub(*pjPtr, p);
       float dist = vlen(d);
       if (dist <= 0.00001f)
         continue;
 
       if (dist < neighborR) {
-        sumVel = vadd(sumVel, vel[j]);
-        sumPos = vadd(sumPos, pos[j]);
+        sumVel = vadd(sumVel, *vjPtr);
+        sumPos = vadd(sumPos, *pjPtr);
         neighborCount++;
       }
 
       if (dist < sepR) {
-        // Separation: push away (1/dist is smoother than 1/dist^2)
-        // Direction is away from neighbor: -d/dist
         sumSep = vadd(sumSep, vscale(d, -1.0f / dist));
         sepCount++;
       }
@@ -98,7 +114,7 @@ void SysBoidsUpdate(GameState_t *gs, Engine_t *eng, float dt) {
     if (neighborCount > 0) {
       float invN = 1.0f / (float)neighborCount;
 
-      // --- Alignment ---
+      // Alignment
       Vector3 avgVel = vscale(sumVel, invN);
       Vector3 desiredA = (Vector3){0};
       float avm = vlen(avgVel);
@@ -108,7 +124,7 @@ void SysBoidsUpdate(GameState_t *gs, Engine_t *eng, float dt) {
       Vector3 steerA = vsub(desiredA, v);
       steerA = vclamp_mag(steerA, gs->maxForce);
 
-      // --- Cohesion ---
+      // Cohesion
       Vector3 center = vscale(sumPos, invN);
       Vector3 toCenter = vsub(center, p);
       Vector3 desiredC = (Vector3){0};
@@ -119,10 +135,9 @@ void SysBoidsUpdate(GameState_t *gs, Engine_t *eng, float dt) {
       Vector3 steerC = vsub(desiredC, v);
       steerC = vclamp_mag(steerC, gs->maxForce);
 
-      // --- Separation ---
-      if (sepCount > 0) {
+      // Separation
+      if (sepCount > 0)
         sumSep = vscale(sumSep, 1.0f / (float)sepCount);
-      }
 
       Vector3 desiredS = (Vector3){0};
       float sm = vlen(sumSep);
@@ -132,7 +147,6 @@ void SysBoidsUpdate(GameState_t *gs, Engine_t *eng, float dt) {
       Vector3 steerS = vsub(desiredS, v);
       steerS = vclamp_mag(steerS, gs->maxForce);
 
-      // Weighted sum
       accel = vadd(accel, vscale(steerA, gs->alignWeight));
       accel = vadd(accel, vscale(steerC, gs->cohesionWeight));
       accel = vadd(accel, vscale(steerS, gs->separationWeight));
@@ -140,11 +154,9 @@ void SysBoidsUpdate(GameState_t *gs, Engine_t *eng, float dt) {
 
     // Integrate velocity
     v = vadd(v, vscale(accel, dt));
-
-    // Clamp to max speed
     v = vclamp_mag(v, gs->maxSpeed);
 
-    // Enforce min speed (keep direction, but ensure it doesn't stall)
+    // Enforce min speed
     float sp = vlen(v);
     if (sp > 0.0001f && sp < gs->minSpeed) {
       v = vscale(v, gs->minSpeed / sp);
@@ -153,45 +165,55 @@ void SysBoidsUpdate(GameState_t *gs, Engine_t *eng, float dt) {
     nextVel[i] = v;
   }
 
-  // Commit + integrate positions + bounds
+  // Commit + integrate positions + bounds (via getComponent)
   for (int i = 0; i < MAX_ENTITIES; i++) {
-    if (!posS->occupied[i] || !velS->occupied[i])
-      continue;
     if (!eng->em.alive[i])
       continue;
 
-    vel[i] = nextVel[i];
-    pos[i] = vadd(pos[i], vscale(vel[i], dt));
+    entity_t ei = MakeEntityID(ET_ACTOR, i);
 
-    // simple wrap
-    if (pos[i].x < gs->boundsMin.x)
-      pos[i].x = gs->boundsMax.x;
-    if (pos[i].x > gs->boundsMax.x)
-      pos[i].x = gs->boundsMin.x;
+    Vector3 *piPtr = (Vector3 *)getComponent(ac, ei, gs->reg.cid_pos);
+    Vector3 *viPtr = (Vector3 *)getComponent(ac, ei, gs->reg.cid_vel);
+    if (!piPtr || !viPtr)
+      continue;
 
-    if (pos[i].y < gs->boundsMin.y)
-      pos[i].y = gs->boundsMax.y;
-    if (pos[i].y > gs->boundsMax.y)
-      pos[i].y = gs->boundsMin.y;
+    *viPtr = nextVel[i];
+    *piPtr = vadd(*piPtr, vscale(*viPtr, dt));
 
-    if (pos[i].z < gs->boundsMin.z)
-      pos[i].z = gs->boundsMax.z;
-    if (pos[i].z > gs->boundsMax.z)
-      pos[i].z = gs->boundsMin.z;
+    // wrap
+    if (piPtr->x < gs->boundsMin.x)
+      piPtr->x = gs->boundsMax.x;
+    if (piPtr->x > gs->boundsMax.x)
+      piPtr->x = gs->boundsMin.x;
+
+    if (piPtr->y < gs->boundsMin.y)
+      piPtr->y = gs->boundsMax.y;
+    if (piPtr->y > gs->boundsMax.y)
+      piPtr->y = gs->boundsMin.y;
+
+    if (piPtr->z < gs->boundsMin.z)
+      piPtr->z = gs->boundsMax.z;
+    if (piPtr->z > gs->boundsMax.z)
+      piPtr->z = gs->boundsMin.z;
   }
 }
 
 void SysBoidsDraw(GameState_t *gs, Engine_t *eng) {
-  Vector3 *pos = (Vector3 *)GetComponentArray(eng->actors, gs->reg.cid_pos);
-  Vector3 *vel = (Vector3 *)GetComponentArray(eng->actors, gs->reg.cid_vel);
-  ComponentStorage_t *posS = &eng->actors->componentStore[gs->reg.cid_pos];
+  ActorComponents_t *ac = eng->actors;
 
   for (int i = 0; i < MAX_ENTITIES; i++) {
-    if (!posS->occupied[i] || !eng->em.alive[i])
+    if (!eng->em.alive[i])
       continue;
 
-    Vector3 p = pos[i];
-    Vector3 v = vel[i];
+    entity_t ei = MakeEntityID(ET_ACTOR, i);
+
+    Vector3 *pPtr = (Vector3 *)getComponent(ac, ei, gs->reg.cid_pos);
+    Vector3 *vPtr = (Vector3 *)getComponent(ac, ei, gs->reg.cid_vel);
+    if (!pPtr || !vPtr)
+      continue;
+
+    Vector3 p = *pPtr;
+    Vector3 v = *vPtr;
 
     float sp = sqrtf(v.x * v.x + v.y * v.y + v.z * v.z);
     if (sp < 0.001f)
@@ -199,24 +221,16 @@ void SysBoidsDraw(GameState_t *gs, Engine_t *eng) {
 
     Vector3 dir = (Vector3){v.x / sp, v.y / sp, v.z / sp};
 
-    // Map dir.x (-1..1) -> hue (0..360)
     float hue = (dir.x * 0.5f + 0.5f) * 360.0f;
-
-    // Map dir.y (-1..1) -> saturation (0.15..1.0) so it never goes fully gray
     float sat = 0.15f + (dir.y * 0.5f + 0.5f) * 0.85f;
-
-    // Keep value/brightness high and stable
     float val = 0.95f;
 
     Color c = ColorFromHSV(hue, sat, val);
 
     DrawSphere(p, 0.3f, c);
-
-    // optional: direction line in same color but slightly dimmer
-    Color line = Fade(c, 0.7f);
     DrawLine3D(
         p,
         (Vector3){p.x + dir.x * 2.0f, p.y + dir.y * 2.0f, p.z + dir.z * 2.0f},
-        line);
+        Fade(c, 0.7f));
   }
 }
